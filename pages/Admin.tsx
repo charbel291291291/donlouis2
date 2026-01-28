@@ -332,10 +332,16 @@ export const Admin: React.FC = () => {
     setGeneratingPromo(true);
     setAiPromoSuggestion(null);
     setGeneratedBanner(null);
+
+    // Yield to the browser so the "Analyzing..." UI can paint and avoid long INP
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
     try {
-      const strategy = await generatePromoStrategy(stats); 
+      const strategy = await generatePromoStrategy(stats);
       setAiPromoSuggestion(strategy);
       setEditingPromo(prev => ({ ...prev, title: strategy.title, description: strategy.description, is_active: true }));
+
+      // Generate image (may take time) — user already sees loading state
       const image = await generatePromoImage(strategy.imagePrompt);
       setGeneratedBanner(image);
     } catch (e: any) { alert("AI Error: " + e.message); } finally { setGeneratingPromo(false); }
