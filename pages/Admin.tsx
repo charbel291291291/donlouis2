@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useDeferredValue } from "react";
+import React, { useEffect, useState, useRef, useDeferredValue, startTransition } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import {
@@ -932,7 +932,7 @@ export const Admin: React.FC = () => {
           ].map((t) => (
             <button
               key={t}
-              onClick={() => setActiveTab(t as any)}
+              onClick={() => startTransition(() => setActiveTab(t as any))}
               className={`px-5 py-2.5 rounded-lg capitalize text-sm font-bold transition-all whitespace-nowrap ${activeTab === t ? "bg-brand-gold text-neutral-900 shadow-md" : "text-gray-400 hover:text-white"}`}
             >
               {t}
