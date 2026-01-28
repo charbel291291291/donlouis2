@@ -1,6 +1,12 @@
-
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { CartItem, MenuItem } from '../types';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+} from "react";
+import { CartItem, MenuItem } from "../types";
 
 interface CartContextType {
   items: CartItem[];
@@ -15,12 +21,14 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [items, setItems] = useState<CartItem[]>([]);
 
   // Load cart from local storage on mount
   useEffect(() => {
-    const savedCart = localStorage.getItem('don_louis_cart');
+    const savedCart = localStorage.getItem("don_louis_cart");
     if (savedCart) {
       try {
         setItems(JSON.parse(savedCart));
@@ -32,57 +40,95 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Save cart to local storage on change
   useEffect(() => {
-    localStorage.setItem('don_louis_cart', JSON.stringify(items));
+    localStorage.setItem("don_louis_cart", JSON.stringify(items));
   }, [items]);
 
-  const addToCart = (item: MenuItem, quantity = 1, notes = '') => {
-    setItems(prev => {
-      const existing = prev.find(i => i.id === item.id);
+  // Memoize callbacks to prevent recreating functions on every render
+  const addToCart = useCallback((item: MenuItem, quantity = 1, notes = "") => {
+    setItems((prev) => {
+      const existing = prev.find((i) => i.id === item.id);
       if (existing) {
-        // If item exists, update quantity. 
+        // If item exists, update quantity.
         // If new notes are provided, we overwrite the old ones (simplified logic for single ID system)
-        return prev.map(i => i.id === item.id ? { 
-            ...i, 
-            quantity: i.quantity + quantity,
-            notes: notes || i.notes // Keep existing notes if new ones aren't provided
-        } : i);
+        return prev.map((i) =>
+          i.id === item.id
+            ? {
+                ...i,
+                quantity: i.quantity + quantity,
+                notes: notes || i.notes, // Keep existing notes if new ones aren't provided
+              }
+            : i,
+        );
       }
       return [...prev, { ...item, quantity, notes }];
     });
-  };
+  }, []);
 
-  const removeFromCart = (itemId: string) => {
-    setItems(prev => prev.filter(i => i.id !== itemId));
-  };
+  const removeFromCart = useCallback((itemId: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+  }, []);
 
-  const updateQuantity = (itemId: string, delta: number) => {
-    setItems(prev => prev.map(i => {
-      if (i.id === itemId) {
-        const newQty = Math.max(0, i.quantity + delta);
-        return { ...i, quantity: newQty };
-      }
-      return i;
-    }).filter(i => i.quantity > 0));
-  };
+  const updateQuantity = useCallback((itemId: string, delta: number) => {
+    setItems((prev) =>
+      prev
+        .map((i) => {
+          if (i.id === itemId) {
+            const newQty = Math.max(0, i.quantity + delta);
+            return { ...i, quantity: newQty };
+          }
+          return i;
+        })
+        .filter((i) => i.quantity > 0),
+    );
+  }, []);
 
-  const updateNotes = (itemId: string, notes: string) => {
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, notes } : i));
-  };
+  const updateNotes = useCallback((itemId: string, notes: string) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, notes } : i)),
+    );
+  }, []);
 
-  const clearCart = () => setItems([]);
+  const clearCart = useCallback(() => setItems([]), []);
 
-  const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
-
-  return (
-    <CartContext.Provider value={{ items, addToCart, removeFromCart, updateQuantity, updateNotes, clearCart, subtotal, totalItems }}>
-      {children}
-    </CartContext.Provider>
+  // Memoize expensive calculations
+  const subtotal = useMemo(
+    () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [items],
   );
+
+  const totalItems = useMemo(
+    () => items.reduce((sum, item) => sum + item.quantity, 0),
+    [items],
+  );
+
+  const value = useMemo(
+    () => ({
+      items,
+      addToCart,
+      removeFromCart,
+      updateQuantity,
+      updateNotes,
+      clearCart,
+      subtotal,
+      totalItems,
+    }),
+    [
+      items,
+      addToCart,
+      removeFromCart,
+      updateQuantity,
+      updateNotes,
+      clearCart,
+      subtotal,
+      totalItems,
+    ],
+  );
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 };
 
 export const useCart = () => {
   const context = useContext(CartContext);
-  if (!context) throw new Error('useCart must be used within a CartProvider');
+  if (!context) throw new Error("useCart must be used within a CartProvider");
   return context;
 };
