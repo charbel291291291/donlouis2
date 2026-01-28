@@ -17,6 +17,11 @@ export const TrackOrder: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   
+  // Rating State
+  const [rating, setRating] = useState(0);
+  const [feedback, setFeedback] = useState('');
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  
   // Auto-tracking state
   const [isAutoChecking, setIsAutoChecking] = useState(false);
   const [ignoreAuto, setIgnoreAuto] = useState(false);
@@ -86,6 +91,10 @@ export const TrackOrder: React.FC = () => {
           setOrder(null);
         } else {
           setOrder(data as any);
+          if (data && data.rating) {
+              setRatingSubmitted(true);
+              setRating(data.rating);
+          }
         }
         setLoading(false);
       });
@@ -113,6 +122,20 @@ export const TrackOrder: React.FC = () => {
     if (inputOrderId.trim()) {
       setSearchParams({ orderId: inputOrderId.trim() });
     }
+  };
+
+  const submitRating = async () => {
+      if(!orderId || rating === 0) return;
+      try {
+          await supabase.from('orders').update({
+              rating,
+              feedback
+          }).eq('id', orderId);
+          setRatingSubmitted(true);
+          alert("Thank you for your feedback!");
+      } catch (e) {
+          console.error(e);
+      }
   };
   
   // Consolidated Loading State
@@ -190,7 +213,6 @@ export const TrackOrder: React.FC = () => {
   if (!order) return null;
 
   const currentStepIndex = steps.indexOf(order.status);
-  const relevantSteps = steps.filter(s => order.order_type !== 'pickup' || s !== 'out_for_delivery');
   
   return (
     <div className="p-6 max-w-md mx-auto pb-24 min-h-screen relative">
@@ -216,7 +238,7 @@ export const TrackOrder: React.FC = () => {
         
         <div className="text-center mb-10">
             <h1 className="text-3xl font-bold text-white mb-2">Order Status</h1>
-            <p className="text-gray-400 text-sm">Estimated arrival: <span className="text-white font-bold">Soon</span></p>
+            <p className="text-gray-400 text-sm">Estimated arrival: <span className="text-white font-bold">{order.status === 'completed' ? 'Arrived' : 'Soon'}</span></p>
         </div>
         
         {/* Progress Card */}
@@ -277,18 +299,50 @@ export const TrackOrder: React.FC = () => {
             </div>
         </div>
 
+        {/* FEEDBACK SECTION */}
+        {order.status === 'completed' && !ratingSubmitted && (
+            <div className="bg-brand-surface p-6 rounded-2xl border border-brand-gold/30 mb-8 animate-fade-in text-center">
+                <h3 className="text-white font-bold mb-3">Rate your meal</h3>
+                <div className="flex justify-center gap-2 mb-4">
+                    {[1,2,3,4,5].map(star => (
+                        <button key={star} onClick={() => setRating(star)} className="transition-transform hover:scale-125">
+                            <Icon name="star" className={`w-8 h-8 ${rating >= star ? 'text-brand-gold fill-current' : 'text-neutral-700'}`} />
+                        </button>
+                    ))}
+                </div>
+                <textarea 
+                    placeholder="Any feedback?" 
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    className="w-full bg-neutral-900 rounded-lg p-3 text-sm text-white border border-neutral-700 mb-3"
+                />
+                <button onClick={submitRating} className="w-full bg-white text-black font-bold py-2 rounded-lg">Submit Review</button>
+            </div>
+        )}
+        
+        {ratingSubmitted && (
+             <div className="bg-green-900/20 p-4 rounded-xl border border-green-500/30 mb-8 text-center">
+                 <p className="text-green-400 font-bold">Thanks for your feedback!</p>
+             </div>
+        )}
+
         {/* Order Details (Receipt) */}
         <div className="bg-neutral-800/30 border border-white/5 p-6 rounded-2xl backdrop-blur-md">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-2">Order Details</h3>
             
             <div className="space-y-3 mb-4">
                 {order.items?.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-sm">
-                        <div className="flex gap-3">
-                            <span className="text-brand-gold font-bold">{item.quantity}x</span>
-                            <span className="text-gray-300">{item.menu_item_name}</span>
+                    <div key={idx} className="flex flex-col text-sm border-b border-white/5 pb-2 last:border-0">
+                        <div className="flex justify-between items-center">
+                            <div className="flex gap-3">
+                                <span className="text-brand-gold font-bold">{item.quantity}x</span>
+                                <span className="text-gray-300">{item.menu_item_name}</span>
+                            </div>
+                            <div className="text-gray-500">${(item.price_at_time * item.quantity).toFixed(2)}</div>
                         </div>
-                        <div className="text-gray-500">${(item.price_at_time * item.quantity).toFixed(2)}</div>
+                        {item.notes && (
+                            <div className="text-[10px] text-gray-500 italic pl-6 mt-1">"{item.notes}"</div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -299,6 +353,13 @@ export const TrackOrder: React.FC = () => {
                 </div>
                 <div className="text-xl font-bold text-white">${order.total_amount.toFixed(2)}</div>
             </div>
+            
+            {order.tip_amount && order.tip_amount > 0 && (
+                <div className="flex justify-between items-center mt-2 text-xs">
+                    <span className="text-gray-500">Includes Driver Tip</span>
+                    <span className="text-brand-gold font-bold">${order.tip_amount.toFixed(2)}</span>
+                </div>
+            )}
             
             <div className="mt-4 text-center">
                  <div className={`inline-block px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider ${order.status === 'completed' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-brand-gold/10 text-brand-gold border border-brand-gold/20'}`}>

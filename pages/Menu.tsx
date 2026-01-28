@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Category, MenuItem } from '../types';
@@ -11,9 +12,14 @@ export const Menu: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const { addToCart, items: cartItems, updateQuantity } = useCart();
   
+  // Modal States
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [itemQuantity, setItemQuantity] = useState(1);
+  const [itemNotes, setItemNotes] = useState('');
+
+  const { addToCart, items: cartItems, updateQuantity } = useCart();
   const categoryScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,20 +30,17 @@ export const Menu: React.FC = () => {
           supabase.from('menu_items').select('*').eq('is_available', true)
         ]);
 
-        // Check if database returned data, otherwise use fallback
         if (catResponse.data && catResponse.data.length > 0) {
           setCategories(catResponse.data);
           if (itemResponse.data) setItems(itemResponse.data);
           setSelectedCategory(catResponse.data[0].id);
         } else {
-          console.log("Using local fallback data (Database empty or disconnected)");
           setCategories(INITIAL_DATA.categories);
           setItems(INITIAL_DATA.items);
           setSelectedCategory(INITIAL_DATA.categories[0].id);
         }
       } catch (error) {
         console.error('Error fetching menu, using fallback:', error);
-        // Fallback on error
         setCategories(INITIAL_DATA.categories);
         setItems(INITIAL_DATA.items);
         setSelectedCategory(INITIAL_DATA.categories[0].id);
@@ -48,7 +51,20 @@ export const Menu: React.FC = () => {
     fetchData();
   }, []);
 
-  // Filter items based on category and search term
+  // Reset modal state when opening an item
+  const openItemModal = (item: MenuItem) => {
+      setSelectedItem(item);
+      setItemQuantity(1);
+      setItemNotes('');
+  };
+
+  const handleAddToCartFromModal = () => {
+      if (selectedItem) {
+          addToCart(selectedItem, itemQuantity, itemNotes);
+          setSelectedItem(null);
+      }
+  };
+
   const filteredItems = items.filter(item => {
     const matchesCategory = selectedCategory === 'all' || item.category_id === selectedCategory;
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -62,7 +78,7 @@ export const Menu: React.FC = () => {
 
   const handleCategoryClick = (catId: string) => {
     setSelectedCategory(catId);
-    setSearchTerm(''); // Clear search when switching categories
+    setSearchTerm(''); 
   };
 
   if (loading) {
@@ -137,8 +153,9 @@ export const Menu: React.FC = () => {
             return (
               <div 
                 key={item.id} 
+                onClick={() => openItemModal(item)}
                 className={`
-                  relative group bg-brand-surface rounded-2xl p-4 border transition-all duration-300 overflow-hidden
+                  relative group bg-brand-surface rounded-2xl p-4 border transition-all duration-300 overflow-hidden cursor-pointer
                   ${qty > 0 ? 'border-brand-gold/50 shadow-[0_4px_20px_-5px_rgba(245,158,11,0.15)]' : 'border-neutral-800 hover:border-neutral-700'}
                 `}
               >
@@ -146,7 +163,7 @@ export const Menu: React.FC = () => {
                   {/* Image Section */}
                   {item.image_url && (
                     <div 
-                        className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 cursor-zoom-in active:scale-95 transition-transform"
+                        className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 active:scale-95 transition-transform"
                         onClick={(e) => {
                             e.stopPropagation();
                             setPreviewImage(item.image_url);
@@ -218,7 +235,73 @@ export const Menu: React.FC = () => {
         )}
       </div>
 
-      {/* Image Preview Lightbox */}
+      {/* ITEM DETAILS MODAL */}
+      {selectedItem && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+              <div className="bg-neutral-900 w-full max-w-md sm:rounded-2xl rounded-t-3xl border-t sm:border border-neutral-800 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                  
+                  {/* Header Image */}
+                  <div className="relative h-56 w-full bg-neutral-800 flex-shrink-0">
+                      {selectedItem.image_url ? (
+                          <img src={selectedItem.image_url} className="w-full h-full object-cover" />
+                      ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-600">
+                              <Icon name="menu" className="w-16 h-16 opacity-20" />
+                          </div>
+                      )}
+                      <button onClick={() => setSelectedItem(null)} className="absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full backdrop-blur-md transition-colors">
+                          <Icon name="close" className="w-6 h-6" />
+                      </button>
+                  </div>
+
+                  {/* Content */}
+                  <div className="p-6 flex-1 overflow-y-auto">
+                      <div className="flex justify-between items-start mb-2">
+                          <h2 className="text-2xl font-bold text-white">{selectedItem.name}</h2>
+                          <span className="text-xl font-bold text-brand-gold">${selectedItem.price.toFixed(2)}</span>
+                      </div>
+                      <p className="text-gray-400 text-sm leading-relaxed mb-6">{selectedItem.description || "No description available."}</p>
+                      
+                      {/* Special Instructions */}
+                      <div className="mb-6">
+                          <label className="flex items-center gap-2 text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
+                              <Icon name="menu" className="w-4 h-4 text-brand-gold" />
+                              Special Instructions
+                          </label>
+                          <textarea 
+                              value={itemNotes}
+                              onChange={(e) => setItemNotes(e.target.value)}
+                              placeholder="e.g. No onions, extra spicy, sauce on side..."
+                              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-white text-sm outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold min-h-[80px]"
+                          />
+                      </div>
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="p-4 border-t border-neutral-800 bg-neutral-900 safe-pb">
+                      <div className="flex gap-4">
+                          {/* Quantity */}
+                          <div className="flex items-center bg-neutral-800 rounded-xl border border-neutral-700 h-14 px-2">
+                              <button onClick={() => setItemQuantity(Math.max(1, itemQuantity - 1))} className="w-10 h-full text-gray-400 hover:text-white text-xl">-</button>
+                              <span className="w-8 text-center font-bold text-white">{itemQuantity}</span>
+                              <button onClick={() => setItemQuantity(itemQuantity + 1)} className="w-10 h-full text-brand-gold text-xl">+</button>
+                          </div>
+                          
+                          {/* Add Button */}
+                          <button 
+                            onClick={handleAddToCartFromModal}
+                            className="flex-1 bg-brand-gold text-neutral-900 font-bold rounded-xl h-14 flex items-center justify-center gap-2 hover:bg-yellow-400 transition-colors shadow-lg shadow-brand-gold/10 active:scale-95"
+                          >
+                              <span>Add to Order</span>
+                              <span className="bg-black/10 px-2 py-0.5 rounded text-sm">${(selectedItem.price * itemQuantity).toFixed(2)}</span>
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Full Image Preview (Only when clicking image directly) */}
       {previewImage && (
         <div 
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in"

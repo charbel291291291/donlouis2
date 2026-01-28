@@ -40,13 +40,20 @@ export type OrderStatus = 'new' | 'preparing' | 'ready' | 'out_for_delivery' | '
 
 export interface CartItem extends MenuItem {
   quantity: number;
+  notes?: string; // New: For "No onions", etc.
 }
 
 export interface SpinReward {
   type: 'discount_percent' | 'free_delivery' | 'free_item' | 'no_luck';
-  value: number; // e.g., 10 for 10%, 0 for free delivery
+  value: number; 
   label: string;
-  target_item_name?: string; // For specific items e.g. "Fries"
+  target_item_name?: string; 
+}
+
+export interface SavedAddress {
+  label: string; // "Home", "Work"
+  address: string;
+  zoneId: string;
 }
 
 export interface UserProfile {
@@ -57,9 +64,10 @@ export interface UserProfile {
   email?: string | null;
   avatar_url?: string | null;
   created_at?: string;
-  last_spin_date?: string | null; // ISO Date string YYYY-MM-DD
-  active_reward?: SpinReward | null; // JSONB in DB
+  last_spin_date?: string | null; 
+  active_reward?: SpinReward | null; 
   referral_count?: number;
+  saved_addresses?: SavedAddress[]; // New field
 }
 
 export interface Order {
@@ -71,6 +79,9 @@ export interface Order {
   status: OrderStatus;
   total_amount: number;
   delivery_fee: number;
+  tip_amount?: number; // New
+  rating?: number; // New
+  feedback?: string; // New
   created_at: string;
   items?: OrderItem[];
 }
@@ -81,4 +92,5 @@ export interface OrderItem {
   menu_item_name: string;
   quantity: number;
   price_at_time: number;
+  notes?: string; // New
 }

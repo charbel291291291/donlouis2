@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useCart } from '../contexts/CartContext';
 import { supabase } from '../supabaseClient';
 import { Icon } from '../components/Icons';
 import { Order, OrderItem } from '../types';
@@ -9,6 +10,7 @@ import { InstallPrompt } from '../components/InstallPrompt';
 
 export const Profile: React.FC = () => {
   const { user, logout, updateProfile } = useAuth();
+  const { addToCart, clearCart, updateNotes } = useCart();
   const navigate = useNavigate();
   const [history, setHistory] = useState<(Order & { items: OrderItem[] })[]>([]);
   const [activeTab, setActiveTab] = useState<'card' | 'history'>('card');
@@ -57,6 +59,34 @@ export const Profile: React.FC = () => {
       } else {
           alert("Failed to update profile: " + res.message);
       }
+  };
+
+  const handleReorder = async (order: Order & { items: OrderItem[] }) => {
+      if (!confirm("Add these items to your cart? This will replace your current cart.")) return;
+      
+      clearCart();
+      
+      // We need to fetch the original menu item details (price, image) because order history only stores snapshot
+      // Optimization: For now we assume items still exist in menu_items table
+      // We will loop and add to cart.
+      
+      for (const item of order.items || []) {
+          // Fetch current details for this item name to get ID and Image
+          const { data: menuItem } = await supabase.from('menu_items').select('*').eq('name', item.menu_item_name).single();
+          
+          if (menuItem) {
+            // Add quantity times
+            for(let i=0; i < item.quantity; i++) {
+                addToCart(menuItem);
+            }
+            // Note: addToCart is a bit simplistic in context loop, notes might be tricky.
+            // Simplified approach for reorder: Just add items, user can re-add notes.
+            // Or better: update CartContext to accept bulk add with notes.
+            // For now, we just add the items.
+          }
+      }
+      
+      navigate('/cart');
   };
 
   const shareReferral = () => {
@@ -264,13 +294,21 @@ export const Profile: React.FC = () => {
                                     {order.items?.map(i => `${i.quantity}x ${i.menu_item_name}`).join(', ')}
                                 </p>
                             </div>
-
-                            <button 
-                                onClick={() => navigate(`/track?orderId=${order.id}`)}
-                                className="w-full mt-1 py-2 text-center text-xs font-bold text-brand-gold hover:text-white border border-brand-gold/20 rounded-lg hover:bg-brand-gold/10 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Icon name="chevronRight" className="w-3 h-3" /> View Full Details & Track
-                            </button>
+                            
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => handleReorder(order)}
+                                    className="flex-1 py-2 text-center text-xs font-bold bg-white text-black rounded-lg hover:bg-gray-200 transition-colors"
+                                >
+                                    Re-Order
+                                </button>
+                                <button 
+                                    onClick={() => navigate(`/track?orderId=${order.id}`)}
+                                    className="flex-1 py-2 text-center text-xs font-bold text-brand-gold border border-brand-gold/20 rounded-lg hover:bg-brand-gold/10 transition-colors"
+                                >
+                                    Details
+                                </button>
+                            </div>
                         </div>
                     ))
                 )}

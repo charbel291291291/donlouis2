@@ -6,15 +6,28 @@ import { Icon } from '../components/Icons';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { DELIVERY_ZONES } from '../constants/deliveryZones';
+import { getBusinessStatus, StatusResult } from '../utils/businessHours';
+import { SavedAddress } from '../types';
 
 export const Cart: React.FC = () => {
-  const { items, updateQuantity, removeFromCart, subtotal, clearCart } = useCart();
+  const { items, updateQuantity, removeFromCart, updateNotes, subtotal, clearCart } = useCart();
   const { user, refreshProfile } = useAuth();
   const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('delivery');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
   const [details, setDetails] = useState({ name: '', phone: '', address: '' });
+  const [tipAmount, setTipAmount] = useState<number>(0);
+  const [customTip, setCustomTip] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  
+  // Saved Address State
+  const [saveAddress, setSaveAddress] = useState(false);
+  const [addressLabel, setAddressLabel] = useState('Home');
+  const [selectedSavedAddrIndex, setSelectedSavedAddrIndex] = useState<number | null>(null);
+
+  // Business Status
+  const [businessStatus, setBusinessStatus] = useState<StatusResult>(getBusinessStatus());
+
   const navigate = useNavigate();
 
   // Auto-fill details if logged in
@@ -26,17 +39,32 @@ export const Cart: React.FC = () => {
             phone: user.phone || ''
         }));
     }
+    // Update business status on mount
+    setBusinessStatus(getBusinessStatus());
   }, [user]);
 
+  // Handle Saved Address Selection
+  const applySavedAddress = (addr: SavedAddress, index: number) => {
+      setDetails(prev => ({ ...prev, address: addr.address }));
+      setSelectedZoneId(addr.zoneId);
+      setSelectedSavedAddrIndex(index);
+      setSaveAddress(false); // Don't save it again if selected from list
+  };
+
+  const handleNewAddressMode = () => {
+      setSelectedSavedAddrIndex(null);
+      setDetails(prev => ({ ...prev, address: '' }));
+      setSelectedZoneId('');
+      setSaveAddress(false);
+  };
+
   // --- REWARD LOGIC ---
-  // If user has an active_reward in DB, we use it regardless of date (unless it was a daily spin strictly). 
-  // For now, we trust active_reward. DailySpin logic in Reward page overwrites it, so it's consistent.
   const reward = user?.active_reward;
   const isRewardValid = !!reward && reward.type !== 'no_luck';
 
   let discountAmount = 0;
   let finalDeliveryFee = 0;
-  let missingRewardItem = null; // Name of item user needs to add to get free
+  let missingRewardItem = null; 
   
   // Base Delivery Fee
   const zoneFee = (orderType === 'delivery' ? (DELIVERY_ZONES.find(z => z.id === selectedZoneId)?.fee || 0) : 0);
@@ -50,12 +78,8 @@ export const Cart: React.FC = () => {
         discountAmount = 0;
         finalDeliveryFee = 0;
     } else if (reward.type === 'free_item' && reward.target_item_name) {
-        // Find if target item is in cart
-        // Loose match: If target is "Fries", match "Fries" or "French Fries" etc.
         const targetItem = items.find(i => i.name.toLowerCase().includes(reward.target_item_name!.toLowerCase()));
-        
         if (targetItem) {
-            // Deduct cost of 1 unit of that item
             discountAmount = targetItem.price; 
         } else {
             missingRewardItem = reward.target_item_name;
@@ -66,11 +90,18 @@ export const Cart: React.FC = () => {
     finalDeliveryFee = zoneFee;
   }
     
-  const total = Math.max(0, subtotal - discountAmount + finalDeliveryFee);
+  const total = Math.max(0, subtotal - discountAmount + finalDeliveryFee + tipAmount);
 
   // Primary Submission Handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Business Hours Check
+    if (businessStatus.status === 'closed') {
+        alert("Sorry, we are currently closed!");
+        return;
+    }
+
     if (items.length === 0) return;
 
     if (orderType === 'delivery') {
@@ -84,6 +115,16 @@ export const Cart: React.FC = () => {
     }
   };
 
+  const handleCustomTipChange = (val: string) => {
+      setCustomTip(val);
+      const num = parseFloat(val);
+      if (!isNaN(num) && num >= 0) {
+          setTipAmount(num);
+      } else {
+          setTipAmount(0);
+      }
+  };
+
   const placeOrder = async () => {
     setLoading(true);
     setShowConfirmation(false);
@@ -92,31 +133,36 @@ export const Cart: React.FC = () => {
       // 1. Calculate Loyalty Points (1 point per $1 subtotal)
       const pointsEarned = Math.floor(subtotal);
 
-      // 2. Fetch existing points safely
-      const { data: existingProfile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('points')
-        .eq('phone', details.phone)
-        .maybeSingle();
-
-      if (fetchError) {
-          console.error("Error fetching profile:", fetchError);
-          throw new Error("Failed to retrieve user profile.");
-      }
-
-      const currentPoints = existingProfile?.points || 0;
-      const newPoints = currentPoints + pointsEarned;
-
-      // 3. Update or Create Profile & Consume Reward
-      // onConflict: 'phone' ensures we update the existing record if found, or insert if new.
+      // 2. Update Profile (Points + Reward Usage + Saved Address)
       const updates: any = { 
         phone: details.phone, 
         full_name: details.name,
-        points: newPoints
       };
       
-      // If reward was used, consume it (set active_reward to null)
-      // Only consume if we actually applied a discount or it was a free delivery that was used
+      let currentSavedAddresses = user?.saved_addresses || [];
+      
+      // Save Address Logic
+      if (user && orderType === 'delivery' && saveAddress && details.address) {
+          const newAddr: SavedAddress = { 
+              label: addressLabel || 'Home', 
+              address: details.address, 
+              zoneId: selectedZoneId 
+          };
+          // Check for duplicate label and replace, or add new
+          const existingIndex = currentSavedAddresses.findIndex(a => a.label.toLowerCase() === newAddr.label.toLowerCase());
+          if (existingIndex >= 0) {
+              currentSavedAddresses[existingIndex] = newAddr;
+          } else {
+              currentSavedAddresses.push(newAddr);
+          }
+          updates.saved_addresses = currentSavedAddresses;
+      }
+
+      if (user) {
+          const { data: freshUser } = await supabase.from('profiles').select('points').eq('id', user.id).single();
+          updates.points = (freshUser?.points || 0) + pointsEarned;
+      }
+
       if (isRewardValid && (discountAmount > 0 || (reward.type === 'free_delivery' && orderType === 'delivery'))) {
           updates.active_reward = null; 
       }
@@ -124,8 +170,7 @@ export const Cart: React.FC = () => {
       const { error: profileError } = await supabase.from('profiles').upsert(updates, { onConflict: 'phone' });
 
       if (profileError) {
-          console.error("Error updating points:", profileError);
-          throw new Error("Failed to update loyalty points.");
+          console.error("Error updating profile:", profileError);
       }
 
       // Prepare Address
@@ -135,7 +180,7 @@ export const Cart: React.FC = () => {
         finalAddress = `[${zoneName}] ${details.address}`;
       }
 
-      // 4. Create Order
+      // 3. Create Order
       const { data: order, error: orderError } = await supabase.from('orders').insert({
         profile_phone: details.phone,
         customer_name: details.name,
@@ -143,17 +188,19 @@ export const Cart: React.FC = () => {
         order_type: orderType,
         total_amount: total,
         delivery_fee: finalDeliveryFee,
+        tip_amount: tipAmount,
         status: 'new'
       }).select().single();
 
       if (orderError) throw orderError;
 
-      // 5. Create Order Items
+      // 4. Create Order Items with Notes
       const orderItems = items.map(item => ({
         order_id: order.id,
         menu_item_name: item.name,
         quantity: item.quantity,
-        price_at_time: item.price
+        price_at_time: item.price,
+        notes: item.notes || ''
       }));
 
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
@@ -161,12 +208,7 @@ export const Cart: React.FC = () => {
       
       // Cleanup
       clearCart();
-      
-      // Refresh profile context to ensure UI reflects new points/cleared reward immediately
-      if (user) {
-          await refreshProfile();
-      }
-
+      if (user) await refreshProfile();
       navigate(`/track?orderId=${order.id}`);
 
     } catch (err: any) {
@@ -186,9 +228,22 @@ export const Cart: React.FC = () => {
     );
   }
 
+  const isClosed = businessStatus.status === 'closed';
+
   return (
     <div className="p-4 max-w-md mx-auto min-h-screen pb-24 relative">
       <h1 className="text-2xl font-bold mb-6 text-white">Checkout</h1>
+
+      {/* Business Status Warning */}
+      {businessStatus.status !== 'open' && (
+          <div className={`p-4 rounded-xl mb-6 flex items-center gap-3 border ${isClosed ? 'bg-red-900/20 border-red-500/30 text-red-400' : 'bg-orange-900/20 border-orange-500/30 text-orange-400'}`}>
+              <Icon name="clock" className="w-6 h-6" />
+              <div>
+                  <p className="font-bold">{businessStatus.text}</p>
+                  {isClosed && <p className="text-xs opacity-80 mt-1">Orders are disabled until we open.</p>}
+              </div>
+          </div>
+      )}
 
       {/* Missing Reward Banner */}
       {missingRewardItem && (
@@ -204,21 +259,31 @@ export const Cart: React.FC = () => {
       {/* Cart Items */}
       <div className="space-y-4 mb-8">
         {items.map(item => (
-          <div key={item.id} className="flex justify-between items-center bg-brand-surface p-3 rounded-lg border border-neutral-800">
-            <div className="flex-1">
-              <h4 className="font-bold text-gray-200">{item.name}</h4>
-              <p className="text-brand-gold text-sm">${(item.price * item.quantity).toFixed(2)}</p>
+          <div key={item.id} className="bg-brand-surface p-4 rounded-xl border border-neutral-800 shadow-md">
+            <div className="flex justify-between items-start mb-3">
+                <div className="flex-1">
+                <h4 className="font-bold text-gray-200">{item.name}</h4>
+                <p className="text-brand-gold text-sm">${(item.price * item.quantity).toFixed(2)}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                <div className="flex items-center bg-neutral-900 rounded-lg p-1">
+                    <button onClick={() => updateQuantity(item.id, -1)} className="px-2 text-gray-400">-</button>
+                    <span className="text-sm font-bold w-4 text-center">{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item.id, 1)} className="px-2 text-brand-gold">+</button>
+                </div>
+                <button onClick={() => removeFromCart(item.id)} className="text-red-500">
+                    <Icon name="trash" className="w-5 h-5" />
+                </button>
+                </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center bg-neutral-900 rounded-lg p-1">
-                 <button onClick={() => updateQuantity(item.id, -1)} className="px-2 text-gray-400">-</button>
-                 <span className="text-sm font-bold w-4 text-center">{item.quantity}</span>
-                 <button onClick={() => updateQuantity(item.id, 1)} className="px-2 text-brand-gold">+</button>
-              </div>
-              <button onClick={() => removeFromCart(item.id)} className="text-red-500">
-                <Icon name="trash" className="w-5 h-5" />
-              </button>
-            </div>
+            {/* Special Instructions Input */}
+            <input 
+                type="text" 
+                placeholder="Special requests? (e.g. No onions)"
+                value={item.notes || ''}
+                onChange={(e) => updateNotes(item.id, e.target.value)}
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-gray-300 placeholder-gray-600 focus:border-brand-gold outline-none transition-colors"
+            />
           </div>
         ))}
       </div>
@@ -260,12 +325,40 @@ export const Cart: React.FC = () => {
         
         {orderType === 'delivery' && (
           <div className="space-y-4 animate-fade-in">
+            
+            {/* SAVED ADDRESS SELECTOR */}
+            {user && (user.saved_addresses?.length || 0) > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    <button
+                        type="button"
+                        onClick={handleNewAddressMode}
+                        className={`whitespace-nowrap px-4 py-2 rounded-lg border text-xs font-bold transition-all flex items-center gap-1
+                            ${selectedSavedAddrIndex === null ? 'bg-brand-gold border-brand-gold text-black' : 'bg-transparent border-neutral-700 text-gray-400'}
+                        `}
+                    >
+                        <Icon name="plus" className="w-3 h-3" /> New Address
+                    </button>
+                    {user.saved_addresses?.map((addr, idx) => (
+                        <button
+                            key={idx}
+                            type="button"
+                            onClick={() => applySavedAddress(addr, idx)}
+                            className={`whitespace-nowrap px-4 py-2 rounded-lg border text-xs font-bold transition-all
+                                ${selectedSavedAddrIndex === idx ? 'bg-brand-gold border-brand-gold text-black' : 'bg-transparent border-neutral-700 text-gray-400'}
+                            `}
+                        >
+                            {addr.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* Zone Selector */}
             <div className="relative">
               <select
                 required
                 value={selectedZoneId}
-                onChange={(e) => setSelectedZoneId(e.target.value)}
+                onChange={(e) => { setSelectedZoneId(e.target.value); setSelectedSavedAddrIndex(null); }}
                 className="w-full bg-brand-surface border border-neutral-700 rounded-lg p-3 text-white focus:border-brand-gold outline-none appearance-none cursor-pointer"
               >
                 <option value="" disabled>Select Delivery Area</option>
@@ -285,9 +378,72 @@ export const Cart: React.FC = () => {
               placeholder="Building, Floor, Apartment, Famous Landmark..." 
               className="w-full bg-brand-surface border border-neutral-700 rounded-lg p-3 text-white focus:border-brand-gold outline-none h-24"
               value={details.address}
-              onChange={e => setDetails({...details, address: e.target.value})}
+              onChange={e => { setDetails({...details, address: e.target.value}); setSelectedSavedAddrIndex(null); }}
             />
+
+            {/* Save Address Option (Only if logged in and not selecting an existing one) */}
+            {user && selectedSavedAddrIndex === null && details.address && selectedZoneId && (
+                <div className="bg-neutral-800/50 p-3 rounded-lg border border-neutral-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <input 
+                            type="checkbox" 
+                            id="saveAddr" 
+                            checked={saveAddress} 
+                            onChange={e => setSaveAddress(e.target.checked)} 
+                            className="w-4 h-4 accent-brand-gold bg-neutral-700 border-neutral-600 rounded"
+                        />
+                        <label htmlFor="saveAddr" className="text-sm text-gray-300">Save address as:</label>
+                    </div>
+                    {saveAddress && (
+                        <input 
+                            type="text" 
+                            value={addressLabel} 
+                            onChange={e => setAddressLabel(e.target.value)} 
+                            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-white w-24 outline-none focus:border-brand-gold"
+                            placeholder="Home"
+                        />
+                    )}
+                </div>
+            )}
           </div>
+        )}
+
+        {/* Tipping Section - Updated for USD */}
+        {orderType === 'delivery' && (
+            <div className="bg-neutral-800/50 p-4 rounded-xl border border-neutral-800">
+                <div className="flex items-center gap-2 mb-3">
+                    <Icon name="star" className="w-4 h-4 text-brand-gold" />
+                    <span className="text-sm font-bold text-gray-300">Tip your driver</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                    {[0, 0.50, 1.00, 2.00].map(amt => (
+                        <button
+                            key={amt}
+                            type="button"
+                            onClick={() => { setTipAmount(amt); setCustomTip(''); }}
+                            className={`py-2 rounded-lg text-xs font-bold transition-all border ${tipAmount === amt && customTip === '' ? 'bg-brand-gold text-black border-brand-gold' : 'bg-transparent text-gray-400 border-neutral-700 hover:border-gray-500'}`}
+                        >
+                            {amt === 0 ? 'No Tip' : `$${amt.toFixed(2)}`}
+                        </button>
+                    ))}
+                    <div className="relative col-span-4 mt-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 font-bold whitespace-nowrap">Custom Amount:</span>
+                            <div className="relative flex-1">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">$</span>
+                                <input 
+                                    type="number"
+                                    step="0.10"
+                                    placeholder="0.00"
+                                    value={customTip}
+                                    onChange={e => handleCustomTipChange(e.target.value)}
+                                    className={`w-full bg-transparent border rounded-lg pl-6 py-2 text-xs font-bold outline-none focus:border-brand-gold text-white ${customTip ? 'border-brand-gold' : 'border-neutral-700'}`}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         )}
 
         {/* Summary */}
@@ -320,6 +476,13 @@ export const Cart: React.FC = () => {
             </span>
           </div>
 
+          {tipAmount > 0 && (
+              <div className="flex justify-between text-brand-gold">
+                  <span>Driver Tip</span>
+                  <span>+${tipAmount.toFixed(2)}</span>
+              </div>
+          )}
+
           <div className="flex justify-between text-xl font-bold text-white pt-2 border-t border-neutral-800/50 mt-2">
             <span>Total</span>
             <span className="text-brand-gold">${total.toFixed(2)}</span>
@@ -328,10 +491,12 @@ export const Cart: React.FC = () => {
 
         <button 
           type="submit" 
-          disabled={loading}
-          className="w-full bg-brand-gold text-neutral-900 font-bold py-4 rounded-xl shadow-lg mt-6 hover:bg-yellow-500 transition-colors disabled:opacity-50"
+          disabled={loading || isClosed}
+          className={`w-full font-bold py-4 rounded-xl shadow-lg mt-6 transition-colors disabled:opacity-50
+            ${isClosed ? 'bg-neutral-700 text-gray-400 cursor-not-allowed' : 'bg-brand-gold text-neutral-900 hover:bg-yellow-500'}
+          `}
         >
-          {loading ? 'Processing...' : 'Place Order'}
+          {loading ? 'Processing...' : (isClosed ? 'Store Closed' : 'Place Order')}
         </button>
       </form>
 
@@ -363,6 +528,13 @@ export const Cart: React.FC = () => {
                         }
                     </span>
                 </div>
+                
+                {tipAmount > 0 && (
+                    <div className="flex justify-between items-center text-brand-gold">
+                        <span>Tip</span>
+                        <span className="font-bold">+${tipAmount.toFixed(2)}</span>
+                    </div>
+                )}
 
                 <div className="pt-2 flex justify-between text-lg font-bold text-white">
                     <span>Total Amount</span>

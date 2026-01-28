@@ -6,6 +6,7 @@ import { Icon } from '../components/Icons';
 import { Promo } from '../types';
 import { DailySpin } from '../components/DailySpin';
 import { useAuth } from '../contexts/AuthContext';
+import { getBusinessStatus, StatusResult } from '../utils/businessHours';
 
 // Fallback Logo (Inline SVG Data URI)
 const DEFAULT_LOGO_BASE64 = `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ3JhZDEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojRjU5RTBCO3N0b3Atb3BhY2l0eToxIiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiNEOTc3MDY7c3RvcC1vcGFjaXR5OjEiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzE3MTcxNyIvPgogIDxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iMjEwIiBzdHJva2U9InVybCgjZ3JhZDEpIiBzdHJva2Utd2lkdGg9IjE2IiBmaWxsPSJub25lIiAvPgogIDxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iMTgwIiBzdHJva2U9IiMyNjI2MjYiIHN0cm9rZS13aWR0aD0iNCIgZmlsbD0ibm9uZSIgLz4KICA8dGV4dCB4PSIyNTYiIHk9IjI5MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0idXJsKCNncmFkMSkiIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCBzZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iMjQwIiBmb250LXN0eWxlPSJpdGFsaWMiPkRMPC90ZXh0PgogIDx0ZXh0IHg9IjI1NiIgeT0iNDIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjOUNBM0FGIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIzMCIgbGV0dGVyLXNwYWNpbmc9IjYiIGZvbnQtd2VpZ2h0PSJib2xkIj5FU1QuIDIwMjU8L3RleHQ+Cjwvc3ZnPg==`;
@@ -15,8 +16,10 @@ export const Home: React.FC = () => {
   const [activePromo, setActivePromo] = useState<Promo | null>(null);
   const [logoUrl, setLogoUrl] = useState<string>(DEFAULT_LOGO_BASE64);
   const [showSpinner, setShowSpinner] = useState(false);
+  const [businessStatus, setBusinessStatus] = useState<StatusResult>(getBusinessStatus());
 
   useEffect(() => {
+    // 1. Fetch Data
     const fetchData = async () => {
       // Fetch Promo
       const { data: promoData } = await supabase
@@ -36,6 +39,13 @@ export const Home: React.FC = () => {
       }
     };
     fetchData();
+
+    // 2. Timer to update business status every minute
+    const timer = setInterval(() => {
+        setBusinessStatus(getBusinessStatus());
+    }, 60000);
+
+    return () => clearInterval(timer);
   }, []);
 
   const handleSpinClick = () => {
@@ -74,8 +84,10 @@ export const Home: React.FC = () => {
 
       {/* Business Status */}
       <div className="flex justify-center items-center space-x-2 text-sm">
-        <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
-        <span className="text-green-400 font-medium">Open Now • Closes 11 PM</span>
+        <span className={`w-3 h-3 rounded-full ${businessStatus.color} ${businessStatus.status !== 'closed' ? 'animate-pulse' : ''}`}></span>
+        <span className={`${businessStatus.textColor} font-medium tracking-wide`}>
+            {businessStatus.text}
+        </span>
       </div>
 
       {/* Daily Spin Banner */}

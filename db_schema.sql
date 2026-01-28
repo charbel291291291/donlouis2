@@ -44,7 +44,8 @@ create table profiles (
   -- NEW FIELDS FOR DAILY SPIN & REFERRALS
   last_spin_date date,
   active_reward jsonb,
-  referral_count int default 0
+  referral_count int default 0,
+  saved_addresses jsonb default '[]'::jsonb -- Array of { label, address, zoneId }
 );
 
 -- Menu Items
@@ -87,6 +88,9 @@ create table orders (
   status text check (status in ('new', 'preparing', 'ready', 'out_for_delivery', 'completed', 'cancelled')) default 'new',
   total_amount decimal(10,2) not null,
   delivery_fee decimal(10,2) default 0,
+  tip_amount decimal(10,2) default 0, -- Added for Tipping
+  rating int, -- Added for Rating
+  feedback text, -- Added for Feedback
   created_at timestamp with time zone default now()
 );
 
@@ -96,7 +100,8 @@ create table order_items (
   order_id uuid references orders(id) on delete cascade,
   menu_item_name text not null,
   quantity int not null,
-  price_at_time decimal(10,2) not null
+  price_at_time decimal(10,2) not null,
+  notes text -- Added for Special Instructions
 );
 
 -- 4. STORAGE SETUP (Menu Images)
@@ -227,8 +232,3 @@ begin
   (cat_drinks, 'Beer', 2.00);
 
 end $$;
-
--- ========================================================
--- IMPORTANT: RUN THIS IF YOU ALREADY HAVE A DATABASE SET UP
--- ========================================================
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referral_count int default 0;

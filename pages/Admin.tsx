@@ -34,7 +34,7 @@ export const Admin: React.FC = () => {
   const [quote, setQuote] = useState('');
   
   // --- DASHBOARD STATE ---
-  const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'stats' | 'promos' | 'rewards' | 'branding' | 'users'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'stats' | 'promos' | 'rewards' | 'branding' | 'users' | 'reviews'>('orders');
   
   // Data State
   const [orders, setOrders] = useState<(Order & { items: OrderItem[] })[]>([]);
@@ -78,7 +78,8 @@ export const Admin: React.FC = () => {
   // Stats State
   const [stats, setStats] = useState({
     daily: 0, dailyCount: 0,
-    total: 0, totalCount: 0
+    total: 0, totalCount: 0,
+    avgRating: 0, reviewCount: 0
   });
   const [topItems, setTopItems] = useState<{name: string, count: number}[]>([]);
 
@@ -166,11 +167,19 @@ export const Admin: React.FC = () => {
         });
         const allOrders = data.filter(o => o.status === 'completed');
         
+        // Review Stats
+        const ratedOrders = data.filter(o => o.rating && o.rating > 0);
+        const avgRating = ratedOrders.length > 0 
+            ? ratedOrders.reduce((sum, o) => sum + (o.rating || 0), 0) / ratedOrders.length 
+            : 0;
+
         setStats({
             daily: dailyOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
             dailyCount: dailyOrders.length,
             total: allOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
-            totalCount: allOrders.length
+            totalCount: allOrders.length,
+            avgRating,
+            reviewCount: ratedOrders.length
         });
 
         const itemCounts: Record<string, number> = {};
@@ -189,6 +198,7 @@ export const Admin: React.FC = () => {
     }
   };
 
+  // ... (Other Fetchers same as before)
   const fetchMenu = async () => {
     const { data: cats } = await supabase.from('categories').select('*').order('sort_order');
     const { data: items } = await supabase.from('menu_items').select('*').order('name');
@@ -227,6 +237,7 @@ export const Admin: React.FC = () => {
   };
 
   const printOrderTicket = (order: Order & { items: OrderItem[] }) => {
+    // ... (Same print function)
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     const html = `
@@ -240,7 +251,10 @@ export const Admin: React.FC = () => {
           <p><strong>Type:</strong> ${order.order_type.toUpperCase()}</p>
           ${order.customer_address ? `<p><strong>Address:</strong> ${order.customer_address}</p>` : ''}
           <div style="border-bottom: 1px dashed black; margin: 10px 0;"></div>
-          ${order.items?.map(i => `<div style="display:flex; justify-content:space-between;"><span>${i.quantity}x ${i.menu_item_name}</span><span>$${(i.price_at_time * i.quantity).toFixed(2)}</span></div>`).join('')}
+          ${order.items?.map(i => `
+            <div style="display:flex; justify-content:space-between;"><span>${i.quantity}x ${i.menu_item_name}</span><span>$${(i.price_at_time * i.quantity).toFixed(2)}</span></div>
+            ${i.notes ? `<div style="font-size:0.8em; font-style:italic; padding-left:10px;">Note: ${i.notes}</div>` : ''}
+          `).join('')}
           <div style="border-bottom: 1px dashed black; margin: 10px 0;"></div>
           <div style="display:flex; justify-content:space-between; font-weight:bold;"><span>Total</span><span>$${order.total_amount.toFixed(2)}</span></div>
           <br/><br/>
@@ -253,6 +267,7 @@ export const Admin: React.FC = () => {
     printWindow.print();
   };
 
+  // ... (Other Handlers: handleSaveItem, handleDeleteItem, etc.)
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingItem) return;
@@ -489,6 +504,7 @@ export const Admin: React.FC = () => {
 
   // --- LOGIN SCREEN ---
   const handleLogin = (val: string) => {
+      // ... (Same login logic)
       if (isVerifying) return;
       if (val === 'clear') { setPin(''); setLoginError(false); return; }
       
@@ -507,13 +523,14 @@ export const Admin: React.FC = () => {
                       setTimeout(() => setLoginError(false), 500);
                       setIsVerifying(false);
                   }
-              }, 300); // Reduce artificial delay for better responsiveness
+              }, 300); 
           }
       }
   };
 
   if (!isAuthenticated) {
-    return (
+      // ... (Same Login UI Code)
+      return (
         <div className="fixed inset-0 w-full h-[100dvh] bg-neutral-950 flex flex-col font-sans overflow-hidden">
              
              {/* ATMOSPHERE / AI BACKGROUND */}
@@ -608,7 +625,7 @@ export const Admin: React.FC = () => {
                  </div>
              </div>
         </div>
-    );
+      );
   }
 
   // --- MAIN ADMIN UI ---
@@ -629,7 +646,7 @@ export const Admin: React.FC = () => {
             </div>
         </div>
         <div className="flex bg-neutral-800 rounded-xl p-1 overflow-x-auto max-w-full shadow-lg border border-neutral-700 w-full md:w-auto">
-            {['orders','menu','stats','promos','rewards','users','branding'].map(t => (
+            {['orders','menu','stats','reviews','promos','rewards','users','branding'].map(t => (
                 <button 
                     key={t} 
                     onClick={() => setActiveTab(t as any)} 
@@ -684,11 +701,19 @@ export const Admin: React.FC = () => {
                                     <span className="text-xs px-2 py-1 rounded bg-neutral-700 uppercase font-bold">{o.order_type}</span>
                                 </div>
                             </div>
-                            <div className="bg-neutral-900/50 p-3 rounded-lg mb-4 text-sm space-y-1">
+                            <div className="bg-neutral-900/50 p-3 rounded-lg mb-4 text-sm space-y-2">
                                 {o.items?.map(i => (
-                                    <div key={i.id} className="flex justify-between">
-                                        <span className="text-gray-300">{i.quantity}x {i.menu_item_name}</span>
-                                        <span className="text-gray-500">${(i.price_at_time * i.quantity).toFixed(2)}</span>
+                                    <div key={i.id} className="flex flex-col gap-1 border-b border-white/5 pb-2 last:border-0 last:pb-0">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-300 font-medium">{i.quantity}x {i.menu_item_name}</span>
+                                            <span className="text-gray-500">${(i.price_at_time * i.quantity).toFixed(2)}</span>
+                                        </div>
+                                        {i.notes && (
+                                            <div className="text-xs text-brand-gold bg-brand-gold/10 p-1.5 rounded-md italic border border-brand-gold/20 flex items-start gap-1">
+                                                <Icon name="menu" className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                                <span>{i.notes}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -696,6 +721,12 @@ export const Admin: React.FC = () => {
                                 <div className="mb-4 text-sm text-gray-400 flex items-start gap-2">
                                     <Icon name="home" className="w-4 h-4 mt-0.5" />
                                     {o.customer_address}
+                                </div>
+                            )}
+                            {o.tip_amount && o.tip_amount > 0 && (
+                                <div className="mb-4 text-sm text-green-400 font-bold flex items-center gap-2">
+                                    <Icon name="star" className="w-4 h-4" />
+                                    Tip Included: ${o.tip_amount.toFixed(2)}
                                 </div>
                             )}
                             <div className="flex gap-2 justify-end">
@@ -717,7 +748,7 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
-        {/* ... Rest of existing admin tabs (menu, promos, etc.) ... */}
+        {/* ... [Rest of Admin tabs - MENU] ... */}
         {activeTab === 'menu' && (
             <div className="space-y-6">
                 <div className="flex justify-end">
@@ -789,6 +820,74 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
+        {/* --- REVIEWS TAB --- */}
+        {activeTab === 'reviews' && (
+            <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     <div className="bg-neutral-800 rounded-2xl p-8 border border-neutral-700 text-center flex flex-col justify-center items-center">
+                         <h2 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2">Overall Satisfaction</h2>
+                         <div className="text-5xl font-bold text-white mb-2">{stats.avgRating.toFixed(1)}<span className="text-xl text-gray-500">/5.0</span></div>
+                         <div className="flex gap-1 text-brand-gold mb-4">
+                             {[1,2,3,4,5].map(s => <Icon key={s} name="star" className={`w-6 h-6 ${s <= Math.round(stats.avgRating) ? 'fill-current' : 'opacity-30'}`} />)}
+                         </div>
+                         <p className="text-sm text-gray-400">Based on {stats.reviewCount} customer reviews</p>
+                     </div>
+                     
+                     <div className="bg-neutral-800 rounded-2xl p-8 border border-neutral-700 flex flex-col justify-center">
+                         <h3 className="font-bold text-white mb-4">Rating Breakdown</h3>
+                         <div className="space-y-3">
+                             {[5,4,3,2,1].map(star => {
+                                 const count = orders.filter(o => o.rating === star).length;
+                                 const percent = stats.reviewCount > 0 ? (count / stats.reviewCount) * 100 : 0;
+                                 return (
+                                     <div key={star} className="flex items-center gap-3">
+                                         <div className="w-8 text-sm font-bold text-gray-400 flex items-center gap-1">{star} <Icon name="star" className="w-3 h-3"/></div>
+                                         <div className="flex-1 h-2 bg-neutral-900 rounded-full overflow-hidden">
+                                             <div className="h-full bg-brand-gold" style={{ width: `${percent}%` }}></div>
+                                         </div>
+                                         <div className="w-8 text-sm text-gray-500 text-right">{count}</div>
+                                     </div>
+                                 )
+                             })}
+                         </div>
+                     </div>
+                </div>
+
+                <div>
+                    <h3 className="text-xl font-bold text-white mb-4">Recent Feedback</h3>
+                    <div className="space-y-4">
+                        {orders.filter(o => o.rating && o.rating > 0).length === 0 ? (
+                            <div className="text-center py-20 text-gray-500 bg-neutral-800 rounded-2xl">No reviews yet.</div>
+                        ) : (
+                            orders.filter(o => o.rating && o.rating > 0).map(o => (
+                                <div key={o.id} className={`bg-neutral-800 p-6 rounded-2xl border ${o.rating! <= 2 ? 'border-red-900/50' : (o.rating === 5 ? 'border-brand-gold/30' : 'border-neutral-700')}`}>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex text-brand-gold">
+                                                {[1,2,3,4,5].map(s => <Icon key={s} name="star" className={`w-4 h-4 ${s <= o.rating! ? 'fill-current' : 'opacity-20'}`} />)}
+                                            </div>
+                                            <span className="font-bold text-white">{o.rating}.0</span>
+                                        </div>
+                                        <span className="text-xs text-gray-500">{new Date(o.created_at).toLocaleDateString()}</span>
+                                    </div>
+                                    {o.feedback ? (
+                                        <p className="text-gray-300 italic mb-4">"{o.feedback}"</p>
+                                    ) : (
+                                        <p className="text-gray-600 text-sm italic mb-4">No written feedback provided.</p>
+                                    )}
+                                    <div className="flex items-center justify-between border-t border-neutral-700 pt-3 text-xs">
+                                        <span className="text-gray-500">Order #{o.id.slice(0,6)} • {o.customer_name}</span>
+                                        <span className="font-mono text-brand-gold">${o.total_amount.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* ... [Rest of Admin tabs - PROMOS, REWARDS, USERS, STATS, BRANDING] ... */}
         {activeTab === 'promos' && (
             <div className="max-w-4xl mx-auto space-y-8">
                  <div className="bg-gradient-to-r from-indigo-900 to-purple-900 rounded-2xl p-8 border border-indigo-500/30 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
@@ -942,6 +1041,7 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
+        {/* ... [Rest of Admin tabs - USERS, STATS, BRANDING] ... */}
         {activeTab === 'users' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <h2 className="text-xl font-bold text-white">User Profiles</h2>
