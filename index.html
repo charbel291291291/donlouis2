@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en" class="bg-neutral-900">
   <head>
@@ -8,11 +9,12 @@
     
     <!-- PWA Meta -->
     <meta name="theme-color" content="#171717" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Don Louis" />
     
-    <link rel="manifest" href="./assets/manifest-CpK47zs0.json" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./logo.svg" />
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
     
@@ -62,12 +64,14 @@
     "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0",
     "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "workbox-window": "https://esm.sh/workbox-window@^7.0.0",
+    "vite-plugin-pwa": "https://esm.sh/vite-plugin-pwa@^1.2.0"
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-LfnnjX2F.js"></script>
-</head>
+  <script type="module" crossorigin src="./assets/index-BDO3aCI5.js"></script>
+<link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
   <body class="bg-neutral-900 text-gray-100 antialiased overscroll-none">
     <div id="root"></div>
 </body>
