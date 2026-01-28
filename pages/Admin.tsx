@@ -149,13 +149,12 @@ export const Admin: React.FC = () => {
     } catch (e) {}
   };
 
-  // --- FETCHERS & ACTIONS (Same as before) ---
+  // --- FETCHERS & ACTIONS ---
   const fetchOrders = async () => {
     const { data } = await supabase.from('orders').select('*, items:order_items(*)').order('created_at', { ascending: false });
     if (data) {
         setOrders(data as any);
         
-        // Calculate Stats Safely
         const now = new Date();
         const dailyOrders = data.filter(o => {
             const d = new Date(o.created_at);
@@ -173,7 +172,6 @@ export const Admin: React.FC = () => {
             totalCount: allOrders.length
         });
 
-        // Calculate Top Items
         const itemCounts: Record<string, number> = {};
         data.forEach(o => {
             if (o.status !== 'cancelled' && o.items) {
@@ -490,7 +488,7 @@ export const Admin: React.FC = () => {
                       setTimeout(() => setLoginError(false), 500);
                       setIsVerifying(false);
                   }
-              }, 800); // Simulate biometric verification delay
+              }, 300); // Reduce artificial delay for better responsiveness
           }
       }
   };
@@ -538,7 +536,7 @@ export const Admin: React.FC = () => {
 
                      <div className="h-4 flex items-center justify-center">
                          {isVerifying ? (
-                             <span className="text-xs font-mono text-brand-gold animate-pulse">VERIFYING BIOMETRICS...</span>
+                             <span className="text-xs font-mono text-brand-gold animate-pulse">VERIFYING...</span>
                          ) : loginError ? (
                              <span className="text-xs font-mono text-red-500 tracking-widest">ACCESS DENIED</span>
                          ) : (
@@ -547,25 +545,40 @@ export const Admin: React.FC = () => {
                      </div>
                  </div>
 
-                 {/* KEYPAD - Responsive Flex */}
+                 {/* KEYPAD - Responsive Flex with optimized buttons */}
                  <div className="w-full max-w-sm mx-auto grid grid-cols-3 gap-3 mb-6 flex-shrink-0 flex-grow-0">
                      {[1,2,3,4,5,6,7,8,9].map(num => (
                          <button 
                             key={num} 
-                            onClick={() => handleLogin(num.toString())}
-                            className="group relative h-14 md:h-16 rounded-xl bg-neutral-800/50 active:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-all duration-100 active:scale-95 shadow-lg touch-manipulation"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                handleLogin(num.toString());
+                            }}
+                            style={{ touchAction: 'manipulation' }}
+                            className="group relative h-14 md:h-16 rounded-xl bg-neutral-800/50 active:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-transform duration-75 active:scale-95 shadow-lg touch-manipulation select-none"
                          >
                              <span className="text-xl text-white font-mono group-hover:text-brand-gold transition-colors">{num}</span>
                          </button>
                      ))}
                      <div className="flex items-center justify-center pointer-events-none opacity-20"><Icon name="user" className="w-4 h-4 text-gray-600" /></div>
                      <button 
-                        onClick={() => handleLogin('0')}
-                        className="group relative h-14 md:h-16 rounded-xl bg-neutral-800/50 active:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-all duration-100 active:scale-95 shadow-lg touch-manipulation"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            handleLogin('0');
+                        }}
+                        style={{ touchAction: 'manipulation' }}
+                        className="group relative h-14 md:h-16 rounded-xl bg-neutral-800/50 active:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-transform duration-75 active:scale-95 shadow-lg touch-manipulation select-none"
                      >
                         <span className="text-xl text-white font-mono group-hover:text-brand-gold transition-colors">0</span>
                      </button>
-                     <button onClick={() => handleLogin('clear')} className="h-14 md:h-16 rounded-xl flex items-center justify-center text-gray-500 hover:text-white hover:bg-neutral-800/50 active:scale-95 transition-all touch-manipulation">
+                     <button 
+                        onClick={(e) => {
+                            e.preventDefault();
+                            handleLogin('clear');
+                        }} 
+                        style={{ touchAction: 'manipulation' }}
+                        className="h-14 md:h-16 rounded-xl flex items-center justify-center text-gray-500 hover:text-white hover:bg-neutral-800/50 active:scale-95 transition-transform duration-75 touch-manipulation select-none"
+                     >
                          <span className="text-[10px] font-bold uppercase tracking-wider">Clear</span>
                      </button>
                  </div>
@@ -685,6 +698,7 @@ export const Admin: React.FC = () => {
             </div>
         )}
 
+        {/* ... Rest of existing admin tabs (menu, promos, etc.) ... */}
         {activeTab === 'menu' && (
             <div className="space-y-6">
                 <div className="flex justify-end">
