@@ -137,12 +137,6 @@ export const Home: React.FC = () => {
         <p>Facing Homsi for music</p>
         <p className="mt-1">+961 81 922 779</p>
         <p className="mt-4 text-[10px] opacity-50">App Version 2.2</p>
-        
-        <div className="mt-4 pt-4 border-t border-neutral-800">
-          <Link to="/admin" className="text-[10px] text-neutral-700 hover:text-neutral-500 uppercase tracking-widest font-bold">
-            Staff Access
-          </Link>
-        </div>
       </div>
 
       {/* Spin Modal */}

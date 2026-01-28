@@ -73,6 +73,7 @@ export const Admin: React.FC = () => {
   // Branding State
   const [appLogo, setAppLogo] = useState<string>(DEFAULT_LOGO_BASE64);
   const [authLogo, setAuthLogo] = useState<string>(DEFAULT_LOGO_BASE64);
+  const [unsavedBranding, setUnsavedBranding] = useState(false);
 
   // Stats State
   const [stats, setStats] = useState({
@@ -286,12 +287,30 @@ export const Admin: React.FC = () => {
           if (target === 'menuItem') setEditingItem(prev => ({ ...prev, image_url: data.publicUrl }));
           else if (target === 'logo') {
               setAppLogo(data.publicUrl);
-              await supabase.from('app_settings').upsert({ key: 'logo_url', value: data.publicUrl });
+              setUnsavedBranding(true);
           } else if (target === 'authLogo') {
               setAuthLogo(data.publicUrl);
-              await supabase.from('app_settings').upsert({ key: 'auth_logo_url', value: data.publicUrl });
+              setUnsavedBranding(true);
           }
       } catch (err: any) { alert(err.message); } finally { setUploading(false); }
+  };
+
+  const handleSaveBranding = async () => {
+      setSaving(true);
+      try {
+          const updates = [
+              { key: 'logo_url', value: appLogo },
+              { key: 'auth_logo_url', value: authLogo }
+          ];
+          const { error } = await supabase.from('app_settings').upsert(updates);
+          if (error) throw error;
+          setUnsavedBranding(false);
+          alert("Branding updated successfully!");
+      } catch (err: any) {
+          alert("Failed to save: " + err.message);
+      } finally {
+          setSaving(false);
+      }
   };
 
   const handleGenerateSmartPromo = async () => {
@@ -457,10 +476,10 @@ export const Admin: React.FC = () => {
               setEditingItem(prev => prev ? ({ ...prev, image_url: data.publicUrl }) : null);
           } else if (aiTarget === 'logo') {
               setAppLogo(data.publicUrl); 
-              await supabase.from('app_settings').upsert({ key: 'logo_url', value: data.publicUrl }); 
+              setUnsavedBranding(true);
           } else if (aiTarget === 'authLogo') {
               setAuthLogo(data.publicUrl);
-              await supabase.from('app_settings').upsert({ key: 'auth_logo_url', value: data.publicUrl });
+              setUnsavedBranding(true);
           }
 
           setIsAIModalOpen(false);
@@ -1096,7 +1115,7 @@ export const Admin: React.FC = () => {
         )}
 
         {activeTab === 'branding' && (
-             <div className="max-w-md mx-auto text-center space-y-12">
+             <div className="max-w-md mx-auto text-center space-y-12 pb-20">
                  {/* Main App Logo */}
                  <div className="bg-neutral-800 p-8 rounded-2xl border border-neutral-700">
                      <h3 className="text-lg font-bold text-white mb-6 uppercase tracking-widest border-b border-neutral-700 pb-2">Main App Logo</h3>
@@ -1121,6 +1140,18 @@ export const Admin: React.FC = () => {
                          </label>
                          <button onClick={()=>openAIModal('authLogo')} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-500">AI Edit</button>
                      </div>
+                 </div>
+
+                 {/* Save Button Footer */}
+                 <div className={`fixed bottom-6 left-0 right-0 px-6 flex justify-center transition-transform duration-300 ${unsavedBranding ? 'translate-y-0' : 'translate-y-24'}`}>
+                     <button 
+                        onClick={handleSaveBranding} 
+                        disabled={saving}
+                        className="bg-green-600 text-white font-bold py-4 px-8 rounded-full shadow-2xl flex items-center gap-3 hover:scale-105 transition-transform"
+                     >
+                        {saving ? <span className="animate-spin">⏳</span> : <Icon name="check" className="w-6 h-6" />}
+                        Save Changes
+                     </button>
                  </div>
              </div>
         )}

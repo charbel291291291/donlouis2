@@ -228,6 +228,16 @@ export const Auth: React.FC = () => {
         <div className="mt-12 text-center opacity-40">
             <p className="text-[10px] uppercase tracking-[0.2em] text-white">Where Food Is An Art</p>
         </div>
+
+        {/* Staff Access */}
+        <div className="mt-6 text-center">
+            <button 
+                onClick={() => navigate('/admin')}
+                className="text-[9px] text-neutral-600 hover:text-neutral-400 uppercase tracking-widest font-bold transition-colors"
+            >
+                Staff Access
+            </button>
+        </div>
       </div>
 
       {/* RECOVERY MODAL */}
