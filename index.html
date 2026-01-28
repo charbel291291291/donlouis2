@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-neutral-900">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Don Louis - Snack Bar & Grill</title>
+    <meta name="description" content="Where Food is an Art. Order online for pickup or delivery.">
+    
+    <!-- PWA Meta -->
+    <meta name="theme-color" content="#171717" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Don Louis" />
+    
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="apple-touch-icon" href="./logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="./logo.svg" />
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                gold: '#F59E0B',
+                dark: '#171717',
+                darker: '#0A0A0A',
+                surface: '#262626'
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            padding: {
+              'safe': 'env(safe-area-inset-bottom)',
+              'safe-top': 'env(safe-area-inset-top)',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      html { -webkit-tap-highlight-color: transparent; scroll-behavior: smooth; }
+      body { overscroll-behavior-y: none; -webkit-user-select: none; user-select: none; }
+      input, textarea { -webkit-user-select: text; user-select: text; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #171717; }
+      ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+      .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.93.1",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-neutral-900 text-gray-100 antialiased overscroll-none">
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

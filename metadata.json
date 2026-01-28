@@ -1,0 +1,7 @@
+{
+  "name": "Don Louis Snack Bar",
+  "description": "Premium Snack Bar & Grill ordering app with rewards and delivery tracking.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
