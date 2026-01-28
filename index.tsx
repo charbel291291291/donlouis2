@@ -1,15 +1,18 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// PWA Service Worker Registration
+// Standard Service Worker Registration
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // Relative path ./sw.js ensures it works on subdirectories
-    navigator.serviceWorker.register('./sw.js').then(
-      (registration) => console.log('SW registered: ', registration.scope),
-      (err) => console.log('SW registration failed: ', err)
-    );
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('SW registered: ', registration);
+      })
+      .catch((registrationError) => {
+        console.log('SW registration failed: ', registrationError);
+      });
   });
 }
 

@@ -79,6 +79,7 @@ export const Admin: React.FC = () => {
     daily: 0, dailyCount: 0,
     total: 0, totalCount: 0
   });
+  const [topItems, setTopItems] = useState<{name: string, count: number}[]>([]);
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -153,16 +154,39 @@ export const Admin: React.FC = () => {
     const { data } = await supabase.from('orders').select('*, items:order_items(*)').order('created_at', { ascending: false });
     if (data) {
         setOrders(data as any);
-        const today = new Date().toISOString().split('T')[0];
-        const dailyOrders = data.filter(o => o.created_at.startsWith(today) && o.status !== 'cancelled');
+        
+        // Calculate Stats Safely
+        const now = new Date();
+        const dailyOrders = data.filter(o => {
+            const d = new Date(o.created_at);
+            return d.getDate() === now.getDate() && 
+                   d.getMonth() === now.getMonth() && 
+                   d.getFullYear() === now.getFullYear() &&
+                   o.status !== 'cancelled';
+        });
         const allOrders = data.filter(o => o.status === 'completed');
         
         setStats({
-            daily: dailyOrders.reduce((sum, o) => sum + o.total_amount, 0),
+            daily: dailyOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
             dailyCount: dailyOrders.length,
-            total: allOrders.reduce((sum, o) => sum + o.total_amount, 0),
+            total: allOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
             totalCount: allOrders.length
         });
+
+        // Calculate Top Items
+        const itemCounts: Record<string, number> = {};
+        data.forEach(o => {
+            if (o.status !== 'cancelled' && o.items) {
+                o.items.forEach((i: any) => {
+                    itemCounts[i.menu_item_name] = (itemCounts[i.menu_item_name] || 0) + i.quantity;
+                });
+            }
+        });
+        const ranked = Object.entries(itemCounts)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a,b) => b.count - a.count)
+            .slice(0, 5);
+        setTopItems(ranked);
     }
   };
 
@@ -323,10 +347,29 @@ export const Admin: React.FC = () => {
       } catch (err: any) { alert("Upload failed: " + err.message); } finally { setUploading(false); }
   };
 
-  const deletePromo = async (id: string) => {
-      if (!window.confirm("Delete promo?")) return;
-      await supabase.from('promos').delete().eq('id', id);
-      fetchPromos();
+  const deletePromo = async (id: string, imageUrl?: string | null) => {
+      if (!window.confirm("Are you sure you want to delete this promo?")) return;
+      
+      try {
+          const { error } = await supabase.from('promos').delete().eq('id', id);
+          if (error) throw error;
+
+          if (imageUrl) {
+              try {
+                  const urlParts = imageUrl.split('/');
+                  const fileName = urlParts[urlParts.length - 1];
+                  if (fileName) {
+                      await supabase.storage.from('menu-items').remove([fileName]);
+                  }
+              } catch (e) {
+                  console.warn("Could not delete associated image", e);
+              }
+          }
+          setPromos(prev => prev.filter(p => p.id !== id));
+      } catch (err: any) {
+          alert("Failed to delete promo: " + err.message);
+          fetchPromos();
+      }
   };
 
   const startEditPromo = (promo: Promo) => {
@@ -454,37 +497,33 @@ export const Admin: React.FC = () => {
 
   if (!isAuthenticated) {
     return (
-        <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+        <div className="fixed inset-0 w-full h-[100dvh] bg-neutral-950 flex flex-col font-sans overflow-hidden">
              
              {/* ATMOSPHERE / AI BACKGROUND */}
              <div className="absolute inset-0 z-0">
                  {/* Deep Dark Grid */}
                  <div className="absolute inset-0 bg-[linear-gradient(rgba(245,158,11,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(245,158,11,0.03)_1px,transparent_1px)] bg-[size:40px_40px] opacity-20"></div>
-                 
                  {/* Moving Orbs */}
                  <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] bg-brand-gold/5 rounded-full blur-[100px] animate-pulse"></div>
                  <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-indigo-900/10 rounded-full blur-[120px] animate-pulse-slow"></div>
-                 
                  {/* Scanning Line */}
                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-gold/40 to-transparent animate-scan shadow-[0_0_20px_#F59E0B]"></div>
              </div>
 
-             <div className="relative z-10 w-full max-w-sm flex flex-col justify-between min-h-[600px] bg-neutral-900/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl">
+             <div className="relative z-10 w-full h-full flex flex-col justify-between p-4 safe-pb">
                  
                  {/* HEADER */}
-                 <div className="text-center animate-fade-in-down">
-                     <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-neutral-800 to-neutral-900 border border-brand-gold/20 shadow-[0_0_30px_rgba(245,158,11,0.1)] mb-6 relative group">
+                 <div className="text-center pt-8 animate-fade-in-down flex-shrink-0">
+                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-neutral-800 to-neutral-900 border border-brand-gold/20 shadow-[0_0_30px_rgba(245,158,11,0.1)] mb-4 relative group">
                          <div className="absolute inset-0 rounded-2xl border border-brand-gold/20 animate-ping opacity-10"></div>
-                         <Icon name="user" className="w-8 h-8 text-brand-gold group-hover:scale-110 transition-transform duration-500" />
+                         <Icon name="user" className="w-6 h-6 text-brand-gold group-hover:scale-110 transition-transform duration-500" />
                      </div>
-                     <h2 className="text-xs font-bold text-brand-gold tracking-[0.3em] uppercase mb-1 font-mono min-h-[1.5em]">{typingText}<span className="animate-pulse">_</span></h2>
-                     <h1 className="text-3xl font-serif text-white tracking-wide">Command Center</h1>
+                     <h2 className="text-[10px] font-bold text-brand-gold tracking-[0.3em] uppercase mb-1 font-mono min-h-[1.5em]">{typingText}<span className="animate-pulse">_</span></h2>
+                     <h1 className="text-2xl font-serif text-white tracking-wide">Command Center</h1>
                  </div>
 
-                 {/* CENTER: INTERACTIVE SECURITY */}
-                 <div className="flex-1 flex flex-col justify-center items-center gap-8 animate-fade-in my-8">
-                     
-                     {/* PIN VISUALIZATION */}
+                 {/* CENTER: PIN VISUALIZATION & MESSAGE */}
+                 <div className="flex-grow flex flex-col justify-center items-center gap-6 animate-fade-in min-h-[100px]">
                      <div className="flex gap-4 relative">
                          {[0,1,2,3].map(i => (
                              <div key={i} className="relative">
@@ -497,8 +536,7 @@ export const Admin: React.FC = () => {
                          ))}
                      </div>
 
-                     {/* STATUS MESSAGE */}
-                     <div className="h-6 flex items-center justify-center">
+                     <div className="h-4 flex items-center justify-center">
                          {isVerifying ? (
                              <span className="text-xs font-mono text-brand-gold animate-pulse">VERIFYING BIOMETRICS...</span>
                          ) : loginError ? (
@@ -507,35 +545,34 @@ export const Admin: React.FC = () => {
                              <span className="text-[10px] font-mono text-gray-600 tracking-widest">ENTER SECURITY PIN</span>
                          )}
                      </div>
+                 </div>
 
-                     {/* LUXURY KEYPAD */}
-                     <div className="grid grid-cols-3 gap-4 w-full px-4">
-                         {[1,2,3,4,5,6,7,8,9].map(num => (
-                             <button 
-                                key={num} 
-                                onClick={() => handleLogin(num.toString())}
-                                className="group relative h-14 rounded-xl bg-neutral-800/50 hover:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-all duration-200 active:scale-95 shadow-lg"
-                             >
-                                 <span className="text-lg text-white font-mono group-hover:text-brand-gold transition-colors">{num}</span>
-                             </button>
-                         ))}
-                         <div className="flex items-center justify-center pointer-events-none opacity-50"><Icon name="user" className="w-4 h-4 text-gray-600" /></div>
+                 {/* KEYPAD - Responsive Flex */}
+                 <div className="w-full max-w-sm mx-auto grid grid-cols-3 gap-3 mb-6 flex-shrink-0 flex-grow-0">
+                     {[1,2,3,4,5,6,7,8,9].map(num => (
                          <button 
-                            onClick={() => handleLogin('0')}
-                            className="group relative h-14 rounded-xl bg-neutral-800/50 hover:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-all duration-200 active:scale-95 shadow-lg"
+                            key={num} 
+                            onClick={() => handleLogin(num.toString())}
+                            className="group relative h-14 md:h-16 rounded-xl bg-neutral-800/50 active:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-all duration-100 active:scale-95 shadow-lg touch-manipulation"
                          >
-                            <span className="text-lg text-white font-mono group-hover:text-brand-gold transition-colors">0</span>
+                             <span className="text-xl text-white font-mono group-hover:text-brand-gold transition-colors">{num}</span>
                          </button>
-                         <button onClick={() => handleLogin('clear')} className="h-14 rounded-xl flex items-center justify-center text-gray-500 hover:text-white hover:bg-neutral-800/50 active:scale-95 transition-all">
-                             <span className="text-xs font-bold uppercase">Clear</span>
-                         </button>
-                     </div>
+                     ))}
+                     <div className="flex items-center justify-center pointer-events-none opacity-20"><Icon name="user" className="w-4 h-4 text-gray-600" /></div>
+                     <button 
+                        onClick={() => handleLogin('0')}
+                        className="group relative h-14 md:h-16 rounded-xl bg-neutral-800/50 active:bg-neutral-800 border border-white/5 hover:border-brand-gold/30 flex items-center justify-center transition-all duration-100 active:scale-95 shadow-lg touch-manipulation"
+                     >
+                        <span className="text-xl text-white font-mono group-hover:text-brand-gold transition-colors">0</span>
+                     </button>
+                     <button onClick={() => handleLogin('clear')} className="h-14 md:h-16 rounded-xl flex items-center justify-center text-gray-500 hover:text-white hover:bg-neutral-800/50 active:scale-95 transition-all touch-manipulation">
+                         <span className="text-[10px] font-bold uppercase tracking-wider">Clear</span>
+                     </button>
                  </div>
 
                  {/* FOOTER: DAILY WISDOM */}
-                 <div className="text-center pt-6 border-t border-white/5">
-                     <p className="text-[10px] text-brand-gold uppercase tracking-[0.2em] font-bold mb-2">Daily Wisdom</p>
-                     <p className="text-xs text-gray-400 italic font-serif leading-relaxed">"{quote}"</p>
+                 <div className="text-center pt-2 border-t border-white/5 flex-shrink-0 pb-1">
+                     <p className="text-[8px] text-gray-500 italic font-serif leading-relaxed truncate px-4">"{quote}"</p>
                  </div>
              </div>
         </div>
@@ -821,7 +858,7 @@ export const Admin: React.FC = () => {
                                  <span className={`text-[10px] px-2 py-1 rounded uppercase font-bold ${p.is_active ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>{p.is_active ? 'Active' : 'Inactive'}</span>
                                  <div className="flex gap-2">
                                      <button onClick={()=>startEditPromo(p)} className="text-xs font-bold text-gray-400 hover:text-white px-2 py-1 bg-neutral-700 rounded">Edit</button>
-                                     <button onClick={()=>deletePromo(p.id)} className="text-xs font-bold text-red-500 px-2 py-1 bg-neutral-700 rounded hover:bg-red-900/20">Delete</button>
+                                     <button onClick={()=>deletePromo(p.id, p.image_url)} className="text-xs font-bold text-red-500 px-2 py-1 bg-neutral-700 rounded hover:bg-red-900/20">Delete</button>
                                  </div>
                              </div>
                          </div>
@@ -944,6 +981,104 @@ export const Admin: React.FC = () => {
                 </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'stats' && (
+             <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
+                 {/* Top Level Stats */}
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                     <div className="bg-neutral-800 p-6 rounded-2xl border border-neutral-700 flex flex-col justify-between h-32">
+                         <div className="flex justify-between items-start">
+                             <p className="text-gray-500 text-xs uppercase font-bold tracking-widest">Today's Sales</p>
+                             <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><Icon name="chart" className="w-4 h-4" /></div>
+                         </div>
+                         <p className="text-3xl font-bold text-white">${stats.daily.toFixed(2)}</p>
+                     </div>
+                     <div className="bg-neutral-800 p-6 rounded-2xl border border-neutral-700 flex flex-col justify-between h-32">
+                         <div className="flex justify-between items-start">
+                             <p className="text-gray-500 text-xs uppercase font-bold tracking-widest">Orders Today</p>
+                             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Icon name="clock" className="w-4 h-4" /></div>
+                         </div>
+                         <p className="text-3xl font-bold text-brand-gold">{stats.dailyCount}</p>
+                     </div>
+                     <div className="bg-neutral-800 p-6 rounded-2xl border border-neutral-700 flex flex-col justify-between h-32">
+                         <div className="flex justify-between items-start">
+                             <p className="text-gray-500 text-xs uppercase font-bold tracking-widest">Total Revenue</p>
+                             <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><Icon name="gift" className="w-4 h-4" /></div>
+                         </div>
+                         <p className="text-3xl font-bold text-white">${stats.total.toFixed(2)}</p>
+                     </div>
+                     <div className="bg-neutral-800 p-6 rounded-2xl border border-neutral-700 flex flex-col justify-between h-32">
+                         <div className="flex justify-between items-start">
+                             <p className="text-gray-500 text-xs uppercase font-bold tracking-widest">Total Orders</p>
+                             <div className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><Icon name="check" className="w-4 h-4" /></div>
+                         </div>
+                         <p className="text-3xl font-bold text-brand-gold">{stats.totalCount}</p>
+                     </div>
+                 </div>
+
+                 {/* Detailed Analysis Section */}
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                     
+                     {/* Top Items Table */}
+                     <div className="bg-neutral-800 rounded-2xl border border-neutral-700 overflow-hidden flex flex-col">
+                         <div className="p-6 border-b border-neutral-700 bg-neutral-800/50">
+                             <h3 className="text-lg font-bold text-white">Top Selling Items</h3>
+                         </div>
+                         <div className="flex-1 p-0">
+                             {topItems.length > 0 ? (
+                                 <table className="w-full text-left border-collapse">
+                                     <thead className="bg-neutral-900/30 text-xs uppercase text-gray-500">
+                                         <tr>
+                                             <th className="p-4 font-bold tracking-wider">Item Name</th>
+                                             <th className="p-4 font-bold tracking-wider text-right">Sold</th>
+                                         </tr>
+                                     </thead>
+                                     <tbody className="divide-y divide-neutral-700">
+                                         {topItems.map((item, idx) => (
+                                             <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                                 <td className="p-4 text-sm font-medium text-gray-200">{item.name}</td>
+                                                 <td className="p-4 text-sm font-bold text-brand-gold text-right">{item.count}</td>
+                                             </tr>
+                                         ))}
+                                     </tbody>
+                                 </table>
+                             ) : (
+                                 <div className="p-8 text-center text-gray-500 text-sm">No data available yet.</div>
+                             )}
+                         </div>
+                     </div>
+
+                     {/* Recent Activity Stream */}
+                     <div className="bg-neutral-800 rounded-2xl border border-neutral-700 overflow-hidden flex flex-col">
+                         <div className="p-6 border-b border-neutral-700 bg-neutral-800/50">
+                             <h3 className="text-lg font-bold text-white">Recent Activity</h3>
+                         </div>
+                         <div className="flex-1 p-0">
+                             {orders.length > 0 ? (
+                                 <div className="divide-y divide-neutral-700">
+                                     {orders.slice(0, 6).map(order => (
+                                         <div key={order.id} className="p-4 flex justify-between items-center hover:bg-white/5 transition-colors">
+                                             <div>
+                                                 <p className="text-sm font-bold text-white">Order #{order.id.slice(0,6)}</p>
+                                                 <p className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</p>
+                                             </div>
+                                             <div className="text-right">
+                                                 <p className="text-sm font-bold text-brand-gold">${Number(order.total_amount).toFixed(2)}</p>
+                                                 <span className={`text-[10px] uppercase font-bold tracking-wider ${order.status === 'completed' ? 'text-green-500' : 'text-yellow-500'}`}>
+                                                     {order.status.replace('_', ' ')}
+                                                 </span>
+                                             </div>
+                                         </div>
+                                     ))}
+                                 </div>
+                             ) : (
+                                 <div className="p-8 text-center text-gray-500 text-sm">No recent orders.</div>
+                             )}
+                         </div>
+                     </div>
+                 </div>
+             </div>
         )}
 
         {activeTab === 'branding' && (
