@@ -1,78 +1,93 @@
-
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['logo.svg', 'robots.txt', 'apple-touch-icon.png'],
+      registerType: "autoUpdate",
+      includeAssets: ["logo.svg", "robots.txt", "apple-touch-icon.png"],
       manifest: {
-        name: 'Don Louis Snack Bar',
-        short_name: 'Don Louis',
-        description: 'Where Food is an Art. Premium Snack Bar & Grill.',
-        theme_color: '#171717',
-        background_color: '#171717',
-        display: 'standalone',
-        orientation: 'portrait',
+        name: "Don Louis Snack Bar",
+        short_name: "Don Louis",
+        description: "Where Food is an Art. Premium Snack Bar & Grill.",
+        theme_color: "#171717",
+        background_color: "#171717",
+        display: "standalone",
+        orientation: "portrait",
         icons: [
           {
-            src: 'logo.svg',
-            sizes: '192x192',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
+            src: "logo.svg",
+            sizes: "192x192",
+            type: "image/svg+xml",
+            purpose: "any maskable",
           },
           {
-            src: 'logo.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
-          }
-        ]
+            src: "logo.svg",
+            sizes: "512x512",
+            type: "image/svg+xml",
+            purpose: "any maskable",
+          },
+        ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        navigateFallback: "/index.html",
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.origin === 'https://cdn.tailwindcss.com',
-            handler: 'CacheFirst',
+            urlPattern: ({ url }) =>
+              url.origin === "https://cdn.tailwindcss.com",
+            handler: "CacheFirst",
             options: {
-              cacheName: 'tailwind-cdn',
+              cacheName: "tailwind-cdn",
               expiration: {
                 maxEntries: 1,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-              }
-            }
+                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
+              },
+            },
           },
           {
-            urlPattern: ({ url }) => url.href.includes('supabase.co/storage'),
-            handler: 'StaleWhileRevalidate',
+            urlPattern: ({ url }) => url.href.includes("supabase.co/storage"),
+            handler: "StaleWhileRevalidate",
             options: {
-              cacheName: 'supabase-images',
+              cacheName: "supabase-images",
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 Days
-              }
-            }
-          }
-        ]
-      }
-    })
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
+              },
+            },
+          },
+          // Cache supabase REST/API calls for offline resiliency (short TTL)
+          {
+            urlPattern: ({ url }) =>
+              url.href.includes(".supabase.co") &&
+              url.pathname.includes("/rest/v1"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "supabase-api",
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 5, // 5 minutes
+              },
+            },
+          },
+        ],
+      },
+    }),
   ],
-  base: './', 
+  base: "./",
   define: {
-    'process.env': {} 
+    "process.env": {},
   },
   build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
+    outDir: "dist",
+    assetsDir: "assets",
     sourcemap: false,
   },
   server: {
     port: 3000,
-    open: true
-  }
+    open: true,
+  },
 });
