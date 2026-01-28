@@ -59,8 +59,59 @@ export const Admin: React.FC = () => {
   // Data State
   const [orders, setOrders] = useState<(Order & { items: OrderItem[] })[]>([]);
   const [orderSearch, setOrderSearch] = useState("");
+
+  // Memoize derived order data to avoid expensive recalculation during tab switches
+  const filteredOrders = React.useMemo(() => {
+    if (!orderSearch.trim()) return orders;
+    const q = orderSearch.toLowerCase();
+    return orders.filter(
+      (o) =>
+        (o.customer_name?.toLowerCase() || "").includes(q) ||
+        (o.profile_phone || "").includes(q) ||
+        o.id.toLowerCase().includes(q),
+    );
+  }, [orders, orderSearch]);
+
+  const ordersByStatus = React.useMemo(() => {
+    const statuses = [
+      "new",
+      "preparing",
+      "ready",
+      "out_for_delivery",
+      "completed",
+      "cancelled",
+    ];
+    const map: Record<string, (Order & { items: OrderItem[] })[]> = {};
+    statuses.forEach((s) => (map[s] = []));
+    orders.forEach((o) => {
+      (map[o.status] ||= []).push(o);
+    });
+    const counts: Record<string, number> = {};
+    statuses.forEach((s) => (counts[s] = map[s]?.length || 0));
+    return { map, counts };
+  }, [orders]);
+
+  const ratedOrders = React.useMemo(
+    () => orders.filter((o) => o.rating && o.rating > 0),
+    [orders],
+  );
+
+  const ratingCounts = React.useMemo(() => {
+    const rc: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    ratedOrders.forEach((o) => {
+      rc[o.rating as number] = (rc[o.rating as number] || 0) + 1;
+    });
+    return rc;
+  }, [ratedOrders]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+
+  // Optimize menu items lookup per category
+  const menuItemsByCategory = React.useMemo(() => {
+    const map: Record<string, MenuItem[]> = {};
+    menuItems.forEach((m) => { (map[m.category_id] ||= []).push(m); });
+    return map;
+  }, [menuItems]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -925,7 +976,7 @@ export const Admin: React.FC = () => {
                     {status.replace(/_/g, " ")}
                   </span>
                   <span className="text-2xl font-bold text-white">
-                    {orders.filter((o) => o.status === status).length}
+                    {ordersByStatus.counts[status] || 0}
                   </span>
                 </div>
               ))}
@@ -933,133 +984,124 @@ export const Admin: React.FC = () => {
 
             {/* Order List */}
             <div className="grid gap-4">
-              {orders
-                .filter(
-                  (o) =>
-                    (o.customer_name?.toLowerCase() || "").includes(
-                      orderSearch.toLowerCase(),
-                    ) ||
-                    (o.profile_phone || "").includes(orderSearch) ||
-                    o.id.toLowerCase().includes(orderSearch.toLowerCase()),
-                )
-                .map((o) => (
-                  <div
-                    key={o.id}
-                    className={`bg-neutral-800 p-5 rounded-xl border-l-4 shadow-lg ${o.status === "new" ? "border-brand-gold animate-pulse-slow" : "border-neutral-600"}`}
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <div className="font-bold text-lg text-white">
-                          Order #{o.id.slice(0, 6)}
-                        </div>
-                        <div className="text-sm text-gray-400">
-                          {o.customer_name} • {o.profile_phone}
-                        </div>
+              {filteredOrders.map((o) => (
+                <div
+                  key={o.id}
+                  className={`bg-neutral-800 p-5 rounded-xl border-l-4 shadow-lg ${o.status === "new" ? "border-brand-gold animate-pulse-slow" : "border-neutral-600"}`}
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className="font-bold text-lg text-white">
+                        Order #{o.id.slice(0, 6)}
                       </div>
-                      <div className="text-right">
-                        <div className="font-mono text-xl font-bold text-brand-gold">
-                          ${o.total_amount.toFixed(2)}
-                        </div>
-                        <span className="text-xs px-2 py-1 rounded bg-neutral-700 uppercase font-bold">
-                          {o.order_type}
-                        </span>
+                      <div className="text-sm text-gray-400">
+                        {o.customer_name} • {o.profile_phone}
                       </div>
                     </div>
-                    <div className="bg-neutral-900/50 p-3 rounded-lg mb-4 text-sm space-y-2">
-                      {o.items?.map((i) => (
-                        <div
-                          key={i.id}
-                          className="flex flex-col gap-1 border-b border-white/5 pb-2 last:border-0 last:pb-0"
-                        >
-                          <div className="flex justify-between">
-                            <span className="text-gray-300 font-medium">
-                              {i.quantity}x {i.menu_item_name}
-                            </span>
-                            <span className="text-gray-500">
-                              ${(i.price_at_time * i.quantity).toFixed(2)}
-                            </span>
-                          </div>
-                          {i.notes && (
-                            <div className="text-xs text-brand-gold bg-brand-gold/10 p-1.5 rounded-md italic border border-brand-gold/20 flex items-start gap-1">
-                              <Icon
-                                name="menu"
-                                className="w-3 h-3 mt-0.5 flex-shrink-0"
-                              />
-                              <span>{i.notes}</span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {o.customer_address && (
-                      <div className="mb-4 text-sm text-gray-400 flex items-start gap-2">
-                        <Icon name="home" className="w-4 h-4 mt-0.5" />
-                        {o.customer_address}
+                    <div className="text-right">
+                      <div className="font-mono text-xl font-bold text-brand-gold">
+                        ${o.total_amount.toFixed(2)}
                       </div>
-                    )}
-                    {o.tip_amount && o.tip_amount > 0 && (
-                      <div className="mb-4 text-sm text-green-400 font-bold flex items-center gap-2">
-                        <Icon name="star" className="w-4 h-4" />
-                        Tip Included: ${o.tip_amount.toFixed(2)}
-                      </div>
-                    )}
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => printOrderTicket(o)}
-                        className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold"
-                      >
-                        Print
-                      </button>
-                      {o.status === "new" && (
-                        <button
-                          onClick={() => updateStatus(o.id, "preparing")}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold shadow-lg shadow-blue-900/20"
-                        >
-                          Accept
-                        </button>
-                      )}
-                      {o.status === "preparing" && (
-                        <button
-                          onClick={() => updateStatus(o.id, "ready")}
-                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded font-bold"
-                        >
-                          Ready
-                        </button>
-                      )}
-                      {o.status === "ready" && (
-                        <button
-                          onClick={() =>
-                            updateStatus(
-                              o.id,
-                              o.order_type === "delivery"
-                                ? "out_for_delivery"
-                                : "completed",
-                            )
-                          }
-                          className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold"
-                        >
-                          {o.order_type === "delivery"
-                            ? "Send Driver"
-                            : "Complete"}
-                        </button>
-                      )}
-                      {o.status === "out_for_delivery" && (
-                        <button
-                          onClick={() => updateStatus(o.id, "completed")}
-                          className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded font-bold"
-                        >
-                          Delivered
-                        </button>
-                      )}
-                      <button
-                        onClick={() => updateStatus(o.id, "cancelled")}
-                        className="px-3 py-2 bg-red-900/20 text-red-500 hover:bg-red-900/40 rounded text-sm font-bold"
-                      >
-                        Cancel
-                      </button>
+                      <span className="text-xs px-2 py-1 rounded bg-neutral-700 uppercase font-bold">
+                        {o.order_type}
+                      </span>
                     </div>
                   </div>
-                ))}
+                  <div className="bg-neutral-900/50 p-3 rounded-lg mb-4 text-sm space-y-2">
+                    {o.items?.map((i) => (
+                      <div
+                        key={i.id}
+                        className="flex flex-col gap-1 border-b border-white/5 pb-2 last:border-0 last:pb-0"
+                      >
+                        <div className="flex justify-between">
+                          <span className="text-gray-300 font-medium">
+                            {i.quantity}x {i.menu_item_name}
+                          </span>
+                          <span className="text-gray-500">
+                            ${(i.price_at_time * i.quantity).toFixed(2)}
+                          </span>
+                        </div>
+                        {i.notes && (
+                          <div className="text-xs text-brand-gold bg-brand-gold/10 p-1.5 rounded-md italic border border-brand-gold/20 flex items-start gap-1">
+                            <Icon
+                              name="menu"
+                              className="w-3 h-3 mt-0.5 flex-shrink-0"
+                            />
+                            <span>{i.notes}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {o.customer_address && (
+                    <div className="mb-4 text-sm text-gray-400 flex items-start gap-2">
+                      <Icon name="home" className="w-4 h-4 mt-0.5" />
+                      {o.customer_address}
+                    </div>
+                  )}
+                  {o.tip_amount && o.tip_amount > 0 && (
+                    <div className="mb-4 text-sm text-green-400 font-bold flex items-center gap-2">
+                      <Icon name="star" className="w-4 h-4" />
+                      Tip Included: ${o.tip_amount.toFixed(2)}
+                    </div>
+                  )}
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => printOrderTicket(o)}
+                      className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold"
+                    >
+                      Print
+                    </button>
+                    {o.status === "new" && (
+                      <button
+                        onClick={() => updateStatus(o.id, "preparing")}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold shadow-lg shadow-blue-900/20"
+                      >
+                        Accept
+                      </button>
+                    )}
+                    {o.status === "preparing" && (
+                      <button
+                        onClick={() => updateStatus(o.id, "ready")}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded font-bold"
+                      >
+                        Ready
+                      </button>
+                    )}
+                    {o.status === "ready" && (
+                      <button
+                        onClick={() =>
+                          updateStatus(
+                            o.id,
+                            o.order_type === "delivery"
+                              ? "out_for_delivery"
+                              : "completed",
+                          )
+                        }
+                        className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold"
+                      >
+                        {o.order_type === "delivery"
+                          ? "Send Driver"
+                          : "Complete"}
+                      </button>
+                    )}
+                    {o.status === "out_for_delivery" && (
+                      <button
+                        onClick={() => updateStatus(o.id, "completed")}
+                        className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded font-bold"
+                      >
+                        Delivered
+                      </button>
+                    )}
+                    <button
+                      onClick={() => updateStatus(o.id, "cancelled")}
+                      className="px-3 py-2 bg-red-900/20 text-red-500 hover:bg-red-900/40 rounded text-sm font-bold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ))}
               {orders.filter(
                 (o) =>
                   (o.customer_name?.toLowerCase() || "").includes(
@@ -1094,7 +1136,9 @@ export const Admin: React.FC = () => {
                 <Icon name="plus" className="w-5 h-5" /> Add Item
               </button>
             </div>
-            {categories.map((cat) => (
+            {categories.map((cat) => {
+              const itemsForCat = (menuItemsByCategory[cat.id] || []);
+              return (
               <div
                 key={cat.id}
                 className="bg-neutral-800 rounded-2xl p-6 border border-neutral-700"
@@ -1103,9 +1147,7 @@ export const Admin: React.FC = () => {
                   {cat.name}
                 </h2>
                 <div className="grid gap-3">
-                  {menuItems
-                    .filter((i) => i.category_id === cat.id)
-                    .map((item) => (
+                  {itemsForCat.map((item) => (
                       <div
                         key={item.id}
                         className="flex items-center justify-between bg-neutral-900/50 p-3 rounded-xl border border-neutral-800 hover:border-neutral-600 transition-colors"
@@ -1116,6 +1158,7 @@ export const Admin: React.FC = () => {
                               <img
                                 src={item.image_url}
                                 className="w-full h-full object-cover"
+                                loading="lazy" decoding="async"
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-gray-700">
@@ -1219,6 +1262,7 @@ export const Admin: React.FC = () => {
                         <img
                           src={editingItem.image_url}
                           className="w-16 h-16 rounded object-cover"
+                          loading="lazy" decoding="async"
                         />
                       ) : (
                         <div className="w-16 h-16 bg-neutral-800 rounded flex items-center justify-center text-xs text-gray-500">
@@ -1308,9 +1352,7 @@ export const Admin: React.FC = () => {
                 <h3 className="font-bold text-white mb-4">Rating Breakdown</h3>
                 <div className="space-y-3">
                   {[5, 4, 3, 2, 1].map((star) => {
-                    const count = orders.filter(
-                      (o) => o.rating === star,
-                    ).length;
+                    const count = ratingCounts[star] || 0;
                     const percent =
                       stats.reviewCount > 0
                         ? (count / stats.reviewCount) * 100
@@ -1487,6 +1529,7 @@ export const Admin: React.FC = () => {
                       <img
                         src={generatedBanner || editingPromo?.image_url || ""}
                         className="w-full h-full object-cover"
+                        loading="lazy" decoding="async"
                       />
                     ) : (
                       <div className="text-gray-600 flex flex-col items-center">
